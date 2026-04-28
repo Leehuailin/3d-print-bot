@@ -10,10 +10,10 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 1. 按钮与状态管理
+# 1. 按钮与状态管理看板
 class PrintManageView(discord.ui.View):
     def __init__(self, requester: discord.Member):
-        super().__init__(timeout=None) 
+        super().__init__(timeout=None) # 按钮永久有效
         self.requester = requester
 
     @discord.ui.button(label="开始打印", style=discord.ButtonStyle.primary, custom_id="btn_start")
@@ -33,7 +33,7 @@ class PrintManageView(discord.ui.View):
         embed.color = discord.Color.green()
         embed.set_field_at(1, name="状态", value="✅ 已完成并归档", inline=False)
         
-        # 3. 移动到归档频道
+        # 3. 移动到归档频道 (读取环境变量中的 ID)
         archive_id = int(os.environ.get("ARCHIVE_CHANNEL_ID", 0))
         archive_channel = bot.get_channel(archive_id)
         if archive_channel:
@@ -44,13 +44,19 @@ class PrintManageView(discord.ui.View):
         # 4. 删除原频道的任务卡片
         await interaction.message.delete()
 
-# 2. 必填参数弹窗 (Modal)
+# 2. 必填参数弹窗 (Modal) - 包含组件修复
 class PrintRequestModal(discord.ui.Modal):
     def __init__(self, file_attachment: discord.Attachment):
         super().__init__(title="补充打印参数")
         self.file_attachment = file_attachment
+        
+        # 定义输入框
         self.material = discord.ui.TextInput(label='材料 (如 PLA/PETG/ABS)', placeholder='请填写材料...', required=True)
         self.quantity = discord.ui.TextInput(label='打印数量', placeholder='1', required=True)
+        
+        # 将输入框加入到弹窗中
+        self.add_item(self.material)
+        self.add_item(self.quantity)
 
     async def on_submit(self, interaction: discord.Interaction):
         # 生成看板卡片
@@ -64,11 +70,11 @@ class PrintRequestModal(discord.ui.Modal):
         view = PrintManageView(interaction.user)
         await interaction.response.send_message(embed=embed, view=view)
 
-# 3. 带附件的斜杠命令 (支持任意文件，强制上传单文件)
+# 3. 带附件的斜杠命令
 @bot.tree.command(name="print", description="上传模型文件并提交打印需求")
 @app_commands.describe(file="请上传你需要打印的模型文件 (强制必填)")
 async def slash_print(interaction: discord.Interaction, file: discord.Attachment):
-    # 直接呼出弹窗
+    # 直接呼出带有材料和数量的表单
     await interaction.response.send_modal(PrintRequestModal(file))
 
 @bot.event
@@ -76,15 +82,16 @@ async def on_ready():
     await bot.tree.sync() 
     print(f'🤖 机器人已上线: {bot.user}')
 
-# --- 假装自己是个网页服务 (绕过云平台的存活检查) ---
+# --- 假装自己是个网页服务 (绕过云平台的存活检查，配合 UptimeRobot 使用) ---
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "3D Print Bot is running smoothly!"
 
 def run_flask():
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
+# --- 启动器 ---
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     bot.run(os.environ.get("DISCORD_TOKEN"))
